@@ -1,15 +1,13 @@
 from telegram.ext import CommandHandler, Filters, MessageHandler, Updater
 import tweepy
-import time
+from config import *
 
-#Telegram authentication
-bot_token = "885901023:AAGR-DoJRSL2Zy6RgLaV5E40aZ8pdCFaOWE"
-
-#Twitter authentication
-twitter_key = "VtOkcPB7emkYlD9VOYewkxHsm"
-twitter_secret = "OBnSTBeqxeXLP1xp6vlp0empy55EcJtQ7BY9PmztoO4alCFq21"
-twitter_token = "1147475130987270144-xFHY6gEXYxUISXWoKD3lMSZF8AP8dP"
-twitter_token_secret = "rgIz4vYUsj2qc397n0lSoB3U9AYddxsl1oSmIrkfhgsUZ"
+#Authentication variables from config.py:
+#bot_token
+#twitter_key
+#twitter_secret
+#twitter_token
+#twitter_token_secret
 
 #Max number of tweets
 n_tweets = 5
