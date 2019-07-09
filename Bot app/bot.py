@@ -27,7 +27,7 @@ def hashtag_search(bot, update):
     tweets = getTweets(twitter, hashtag)
     response_message = ""
     
-    #Armazenar no banco de dados
+    #Implement: ----Store within Database-----
     for tweet in tweets:
         print("Usuário: " + tweet._json['user']['name'])
         print("Tweet: " + tweet._json['text'])
