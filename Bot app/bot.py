@@ -1,8 +1,12 @@
 from telegram.ext import CommandHandler, Filters, MessageHandler, Updater
 import tweepy
 from config import *
-from cassandra.cluster import Cluster
 from twitter import *
+from DAO import CassandraDAO
+from PysparkHandler import PysparkJobHandler
+
+#Docker Machine IP:
+cassandra_ip = '192.168.99.100'
 
 #Authentication variables from config.py:
 #bot_token
@@ -12,48 +16,55 @@ from twitter import *
 #twitter_token_secret
 
 #Max number of tweets
-n_tweets = 5
+n_tweets = 100
 
-#Docker Machine IP:
-cassandra_ip = '192.168.99.100'
+pysparkHandler = PysparkJobHandler(cassandra_ip)
 
 def start(bot, update):
     response_message = "Digite a Hashtag a ser pesquisada"
     bot.send_message(chat_id=update.message.chat_id, text=response_message)
 
 def unknown(bot, update):
-    response_message = "Função Unknown"
+    response_message = "Favor digitar no seguinte formato: #palavra_a_ser_procurada"
     bot.send_message(chat_id=update.message.chat_id, text=response_message)
 
 def hashtag_search(bot, update):
     hashtag = update.message.text
     twitter = twitter_auth()
     tweets = getTweets(twitter, hashtag, n_tweets)
-    response_message = ""
-    cluster = Cluster([cassandra_ip], port=9042)
-    session = cluster.connect()
-    session.execute("CREATE KEYSPACE IF NOT EXISTS botdb WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 }")
-    session.set_keyspace('botdb')
-    session.execute("CREATE TABLE IF NOT EXISTS tweet (id bigint primary key, created_at text, txt text, user_name text, user_followers_count int, lang text, hashtag_ text)")
+    cass_dao = CassandraDAO(cassandra_ip)
+    cass_dao.create(keyspace = 'botdb', table1 = 'tweet', table2 = 'output')
+    response_message = cass_dao.insert(tweets, hashtag, update.message.from_user['id'])
+    response_message = response_message + "\n\n\n\nUsuários com mais seguidores:\n"
+    cass_dao.close()
     
-    for tweet in tweets:
-        response_message = response_message + "Usuário: " + tweet._json['user']['name'] + "\nTweet: " + tweet._json['text'] + "\n\n"
-        session.execute("""INSERT INTO tweet (id, created_at, txt, user_name, user_followers_count, lang, hashtag_) values (%s, %s, %s, %s, %s, %s, %s)""", (tweet._json['id'], str(tweet._json['created_at']), tweet._json['text'], tweet._json['user']['name'], tweet._json['user']['followers_count'], tweet._json['lang'], hashtag))
+    popular_users, total_portuguese = pysparkHandler.runJobs(hashtag)
+    pop_users_text = ""
+    for user in popular_users:
+        response_message = response_message + user.asDict()['tweet_user_name'] + "\n"
+        pop_users_text = pop_users_text + user.asDict()['tweet_user_name'] + ", "
+    pop_users_text = pop_users_text.rstrip(", ")
+    
+    response_seguidores = "Usuários com mais seguidores: " + pop_users_text
+    response_total_pt = "Total de tweets em português: " + str(total_portuguese)
+    
+    print(response_seguidores + response_total_pt + "\n\n")
+    
+    #TODO - Record pop_users_text on cassandra output table
     
     #Returns the messages for the bot. Just for debugging for now.
-    bot.send_message(chat_id=update.message.chat_id, text=response_message)
-    session.shutdown()
-    cluster.shutdown()
+    bot.send_message(chat_id=update.message.chat_id, text=(response_seguidores+response_total_pt))
+    
+    cass_dao.close()
 
 def main():
     updater = Updater(token=bot_token)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(MessageHandler(Filters.entity("hashtag"), hashtag_search))
-    
+    dispatcher.add_handler(MessageHandler(Filters.command, unknown))
     updater.start_polling()
     updater.idle()
-
 
 if __name__ == '__main__':
     print("press CTRL + C to cancel.")
